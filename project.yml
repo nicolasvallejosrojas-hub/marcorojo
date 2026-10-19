@@ -16,6 +16,7 @@ targets:
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         NSPhotoLibraryAddUsageDescription: Para guardar tus fotos con marco.
+        NSPhotoLibraryUsageDescription: Para guardar tus fotos con marco.
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: cl.vallejos.marcorojo

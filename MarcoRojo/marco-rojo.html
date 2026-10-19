@@ -2,82 +2,340 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Marco Rojo</title>
 <link rel="apple-touch-icon" href="icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Marco Rojo">
-<meta name="apple-mobile-web-app-status-bar-style" content="black">
-<meta name="theme-color" content="#111111">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0a0a0a">
 <style>
-  :root { --bg:#111; --fg:#eee; --muted:#888; --accent:#650D0B; }
-  body { margin:0; padding:16px; background:var(--bg); color:var(--fg); font:16px system-ui, sans-serif; }
-  .bar { display:flex; flex-wrap:wrap; gap:12px 20px; align-items:center; margin-bottom:16px; }
-  label { display:flex; gap:6px; align-items:center; color:var(--muted); }
-  button { background:var(--accent); color:#fff; border:0; padding:8px 14px; border-radius:6px; cursor:pointer; font:inherit; }
-  #out { display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:12px; }
-  #out a { display:block; }
-  #out canvas { width:100%; height:auto; display:block; }
-  #drop { border:2px dashed #444; border-radius:8px; padding:24px; text-align:center; color:var(--muted); margin-bottom:16px; }
+  :root {
+    --bg:#0a0a0a; --surface:#161616; --surface2:#222; --line:#2c2c2c;
+    --fg:#f2f2f2; --muted:#8e8e93; --accent:#d23a2f; --accent-press:#a92c23;
+    --radius:14px;
+    --st:env(safe-area-inset-top); --sb:env(safe-area-inset-bottom);
+  }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { margin:0; background:var(--bg); color:var(--fg); }
+  body {
+    font:15px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+    -webkit-user-select:none; user-select:none; -webkit-font-smoothing:antialiased;
+    min-height:100dvh;
+  }
+  button { font:inherit; color:inherit; background:none; border:0; padding:0; cursor:pointer; }
+  input[type=file] { display:none; }
+
+  /* Header */
+  header {
+    position:sticky; top:0; z-index:5; display:flex; align-items:center; justify-content:space-between;
+    padding:calc(var(--st) + 10px) 16px 10px; background:rgba(10,10,10,.82);
+    -webkit-backdrop-filter:blur(20px); backdrop-filter:blur(20px); border-bottom:.5px solid var(--line);
+  }
+  .brand { display:flex; align-items:center; gap:10px; font-weight:700; font-size:17px; letter-spacing:-.2px; }
+  .brand i { width:22px; height:22px; border:4px solid var(--accent); border-radius:5px; }
+  .icon-btn { width:36px; height:36px; border-radius:50%; display:grid; place-items:center; background:var(--surface2); }
+  .icon-btn svg { width:20px; height:20px; }
+
+  /* Empty state */
+  #empty { min-height:calc(100dvh - 120px); display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:32px 24px; gap:10px; }
+  #empty .art { width:120px; height:150px; border-radius:6px; background:#650d0b; display:grid; place-items:center; margin-bottom:18px; box-shadow:0 20px 50px rgba(0,0,0,.6); }
+  #empty .art span { width:84px; height:104px; border-radius:2px; background:linear-gradient(160deg,#5b6d7d,#2a3540 55%,#c9a56a); }
+  #empty h1 { margin:0; font-size:24px; letter-spacing:-.4px; }
+  #empty p { margin:0 0 18px; color:var(--muted); max-width:280px; }
+  .primary {
+    background:var(--accent); color:#fff; font-weight:600; border-radius:12px; padding:14px 22px; min-height:50px;
+    display:inline-flex; align-items:center; justify-content:center; gap:8px; transition:transform .1s, background .1s;
+  }
+  .primary:active { background:var(--accent-press); transform:scale(.98); }
+  .secondary { background:var(--surface2); color:var(--fg); font-weight:600; border-radius:12px; padding:14px 18px; min-height:50px; }
+  .secondary:active { background:#2e2e2e; }
+
+  /* Editor */
+  .editor { display:none; padding:0 16px calc(var(--sb) + 96px); max-width:1100px; margin:0 auto; }
+  body.has-photos #empty { display:none; }
+  body.has-photos .editor { display:block; }
+  .stage { padding:20px 0 12px; display:flex; justify-content:center; }
+  .stage canvas { max-width:100%; max-height:52dvh; width:auto; height:auto; border-radius:3px; box-shadow:0 18px 50px rgba(0,0,0,.7); }
+
+  .strip { display:flex; gap:10px; overflow-x:auto; padding:6px 2px 14px; scrollbar-width:none; }
+  .strip::-webkit-scrollbar { display:none; }
+  .strip > :first-child { margin-left:auto; }
+  .strip > :last-child { margin-right:auto; }
+  .thumb { position:relative; flex:none; width:58px; height:72px; border-radius:8px; overflow:hidden; background:var(--surface); outline:2px solid transparent; outline-offset:2px; transition:outline-color .15s; }
+  .thumb canvas { width:100%; height:100%; object-fit:cover; display:block; }
+  .thumb.on { outline-color:var(--fg); }
+  .thumb .x { position:absolute; top:3px; right:3px; width:20px; height:20px; border-radius:50%; background:rgba(0,0,0,.7); display:none; place-items:center; }
+  .thumb.on .x { display:grid; }
+  .thumb .x svg { width:10px; height:10px; }
+  .thumb.add { display:grid; place-items:center; border:1.5px dashed #444; background:none; color:var(--muted); }
+  .thumb.add svg { width:22px; height:22px; }
+
+  .panel { background:var(--surface); border-radius:var(--radius); padding:6px; }
+  .tabs { display:grid; grid-template-columns:1fr 1fr; background:var(--bg); border-radius:10px; padding:3px; margin-bottom:6px; }
+  .tabs button { padding:8px; border-radius:8px; font-weight:600; font-size:14px; color:var(--muted); }
+  .tabs button.on { background:var(--surface2); color:var(--fg); }
+  .pane { display:none; padding:6px 10px 10px; }
+  .pane.on { display:block; }
+  .group { padding:12px 0; border-bottom:.5px solid var(--line); }
+  .group:last-child { border-bottom:0; }
+  .group > .h { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:10px; }
+  .h b { font-weight:600; font-size:14px; }
+  .h span { color:var(--muted); font-variant-numeric:tabular-nums; font-size:13px; }
+
+  .seg { display:grid; grid-auto-flow:column; grid-auto-columns:1fr; gap:8px; }
+  .seg button { padding:10px 4px; border-radius:10px; background:var(--surface2); display:flex; flex-direction:column; align-items:center; gap:6px; font-size:13px; font-weight:600; border:1.5px solid transparent; }
+  .seg button small { color:var(--muted); font-weight:400; font-size:11px; }
+  .seg button i { display:block; border:2px solid currentColor; border-radius:2px; height:24px; opacity:.8; }
+  .seg button.on { border-color:var(--fg); }
+
+  .swatches { display:flex; gap:12px; flex-wrap:wrap; }
+  .sw { width:36px; height:36px; border-radius:50%; border:1px solid rgba(255,255,255,.18); position:relative; }
+  .sw.on::after { content:""; position:absolute; inset:-5px; border-radius:50%; border:2px solid var(--fg); }
+  .sw.custom { background:conic-gradient(#f44,#fd4,#4d6,#4cf,#64f,#f4c,#f44); overflow:hidden; }
+  .sw.custom input { position:absolute; inset:0; opacity:0; width:100%; height:100%; border:0; padding:0; }
+
+  input[type=range] { -webkit-appearance:none; appearance:none; width:100%; height:28px; background:none; margin:0; }
+  input[type=range]::-webkit-slider-runnable-track { height:4px; border-radius:2px; background:linear-gradient(to right, var(--fg) var(--p,50%), #3a3a3c var(--p,50%)); }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:24px; height:24px; margin-top:-10px; border-radius:50%; background:#fff; box-shadow:0 1px 6px rgba(0,0,0,.5); }
+  input[type=range]::-moz-range-track { height:4px; border-radius:2px; background:#3a3a3c; }
+  input[type=range]::-moz-range-progress { height:4px; border-radius:2px; background:var(--fg); }
+  input[type=range]::-moz-range-thumb { width:24px; height:24px; border:0; border-radius:50%; background:#fff; }
+
+  .row { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  .row p { margin:2px 0 0; color:var(--muted); font-size:12px; }
+  .switch { position:relative; flex:none; width:51px; height:31px; }
+  .switch input { position:absolute; opacity:0; width:100%; height:100%; margin:0; z-index:1; }
+  .switch i { position:absolute; inset:0; border-radius:16px; background:#39393d; transition:background .2s; }
+  .switch i::after { content:""; position:absolute; top:2px; left:2px; width:27px; height:27px; border-radius:50%; background:#fff; transition:transform .2s; box-shadow:0 2px 4px rgba(0,0,0,.3); }
+  .switch input:checked + i { background:#34c759; }
+  .switch input:checked + i::after { transform:translateX(20px); }
+  .link { color:var(--accent); font-weight:600; font-size:14px; padding:12px 0 2px; }
+
+  /* Bottom action bar */
+  .actions {
+    position:fixed; left:0; right:0; bottom:0; z-index:5; display:none; gap:10px;
+    padding:12px 16px calc(var(--sb) + 12px); background:rgba(10,10,10,.85);
+    -webkit-backdrop-filter:blur(20px); backdrop-filter:blur(20px); border-top:.5px solid var(--line);
+  }
+  body.has-photos .actions { display:flex; }
+  .actions button { flex:1; white-space:nowrap; padding-left:12px; padding-right:12px; }
+  .actions button:disabled { opacity:.5; }
+
+  /* Toast */
+  #toast {
+    position:fixed; left:50%; bottom:calc(var(--sb) + 92px); z-index:10; transform:translate(-50%, 20px); opacity:0; pointer-events:none;
+    background:#2c2c2e; color:var(--fg); padding:11px 16px; border-radius:12px; font-size:14px; font-weight:500;
+    display:flex; gap:12px; align-items:center; box-shadow:0 10px 30px rgba(0,0,0,.5); transition:opacity .2s, transform .2s; max-width:calc(100% - 32px);
+  }
+  #toast.show { opacity:1; transform:translate(-50%, 0); pointer-events:auto; }
+  #toast button { color:var(--accent); font-weight:600; white-space:nowrap; }
+
+  #dropzone { position:fixed; inset:0; z-index:20; display:none; place-items:center; background:rgba(10,10,10,.85); border:3px dashed var(--accent); font-size:20px; font-weight:600; }
+  body.dragging #dropzone { display:grid; }
+
+  @media (min-width:900px) {
+    .editor { display:none; grid-template-columns:1fr 360px; gap:28px; padding-top:20px; padding-bottom:40px; }
+    body.has-photos .editor { display:grid; }
+    .stage canvas { max-height:72vh; }
+    .side { position:sticky; top:80px; align-self:start; }
+    .actions { position:static; background:none; border:0; padding:12px 0 0; -webkit-backdrop-filter:none; backdrop-filter:none; }
+    #toast { bottom:32px; }
+  }
 </style>
 </head>
 <body>
-<div class="bar">
-  <input type="file" id="files" accept="image/*" multiple>
-  <label>Color <input type="color" id="color" value="#650d0b"></label>
-  <label>Formato
-    <select id="ratio">
-      <option value="1080x1350">4:5 (1080×1350)</option>
-      <option value="1080x1440">3:4 (1080×1440)</option>
-      <option value="1080x1080">1:1 (1080×1080)</option>
-    </select>
+<header>
+  <div class="brand"><i></i>Marco Rojo</div>
+  <label class="icon-btn" for="files" aria-label="Añadir fotos">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
   </label>
-  <label>Margen <input type="range" id="margin" min="0" max="25" value="8"> <span id="mv">8%</span></label>
-  <button id="all">Descargar todas</button>
-</div>
-<div class="bar">
-  <label><input type="checkbox" id="auto"> Auto contraste</label>
-  <label>Brillo <input type="range" id="bright" min="-50" max="50" value="0"></label>
-  <label>Contraste <input type="range" id="contrast" min="-50" max="50" value="0"></label>
-  <label>Saturación <input type="range" id="sat" min="-100" max="100" value="0"></label>
-  <label>Calidez <input type="range" id="warm" min="-50" max="50" value="0"></label>
-  <label>Nitidez <input type="range" id="sharp" min="0" max="100" value="0"></label>
-  <button id="reset">Restablecer</button>
-</div>
-<div id="drop">Arrastra fotos aquí o usa el selector. Clic en una imagen para descargarla.</div>
-<div id="out"></div>
+</header>
+<input type="file" id="files" accept="image/*" multiple>
+
+<section id="empty">
+  <div class="art"><span></span></div>
+  <h1>Enmarca tus fotos</h1>
+  <p>Elige una o varias fotos para añadirles un marco listo para Instagram.</p>
+  <label class="primary" for="files">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+    Elegir fotos
+  </label>
+</section>
+
+<main class="editor">
+  <div>
+    <div class="stage"><canvas id="preview"></canvas></div>
+    <div class="strip" id="strip"></div>
+  </div>
+  <div class="side">
+    <div class="panel">
+      <div class="tabs">
+        <button class="on" data-tab="frame">Marco</button>
+        <button data-tab="adjust">Ajustes</button>
+      </div>
+
+      <div class="pane on" id="frame">
+        <div class="group">
+          <div class="h"><b>Formato</b></div>
+          <div class="seg" id="ratio">
+            <button data-v="1080x1350" class="on"><i style="width:19px"></i>4:5<small>Retrato</small></button>
+            <button data-v="1080x1440"><i style="width:18px"></i>3:4<small>Clásico</small></button>
+            <button data-v="1080x1080"><i style="width:24px"></i>1:1<small>Cuadrado</small></button>
+          </div>
+        </div>
+        <div class="group">
+          <div class="h"><b>Color</b><span id="cv">#650D0B</span></div>
+          <div class="swatches" id="colors">
+            <label class="sw custom" aria-label="Color personalizado"><input type="color" id="color" value="#650d0b"></label>
+          </div>
+        </div>
+        <div class="group">
+          <div class="h"><b>Margen</b><span id="margin-v"></span></div>
+          <input type="range" id="margin" min="0" max="25" value="8">
+        </div>
+      </div>
+
+      <div class="pane" id="adjust">
+        <div class="group row">
+          <div><b>Auto contraste</b><p>Ajusta negros y blancos automáticamente</p></div>
+          <label class="switch"><input type="checkbox" id="auto"><i></i></label>
+        </div>
+        <div id="sliders"></div>
+        <button class="link" id="reset">Restablecer ajustes</button>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="secondary" id="all">Guardar todas</button>
+      <button class="primary" id="save">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0-4-4m4 4 4-4M5 21h14"/></svg>
+        Guardar
+      </button>
+    </div>
+  </div>
+</main>
+
+<div id="toast"><span></span></div>
+<div id="dropzone">Suelta las fotos aquí</div>
 
 <script>
 const $ = id => document.getElementById(id);
-let images = [];
+const COLORS = ['#650d0b', '#111111', '#ffffff', '#efe6d8', '#1f3a5f'];
+const SLIDERS = [
+  ['bright', 'Brillo', -50, 50],
+  ['contrast', 'Contraste', -50, 50],
+  ['sat', 'Saturación', -100, 100],
+  ['warm', 'Calidez', -50, 50],
+  ['sharp', 'Nitidez', 0, 100],
+];
+const state = { ratio: '1080x1350', color: '#650d0b' };
+let items = [], current = 0;
 
-function render() {
-  $('mv').textContent = $('margin').value + '%';
-  const [W, H] = $('ratio').value.split('x').map(Number);
-  const m = W * $('margin').value / 100;
-  $('out').innerHTML = '';
-  images.forEach(({ img, name }) => {
-    const c = document.createElement('canvas');
-    c.width = W; c.height = H;
-    const x = c.getContext('2d');
-    x.fillStyle = $('color').value;
-    x.fillRect(0, 0, W, H);
-    const s = Math.min((W - 2 * m) / img.width, (H - 2 * m) / img.height);
-    const w = img.width * s, h = img.height * s;
-    x.drawImage(enhance(img, Math.round(w), Math.round(h)), (W - w) / 2, (H - h) / 2, w, h);
-    const a = document.createElement('a');
-    a.href = '#';
-    a.onclick = e => { e.preventDefault(); save(c, name); };
-    a.appendChild(c);
-    $('out').appendChild(a);
-  });
+// ---- Controls ----
+for (const c of COLORS) {
+  const b = document.createElement('button');
+  b.className = 'sw'; b.style.background = c; b.dataset.v = c; b.setAttribute('aria-label', c);
+  $('colors').insertBefore(b, $('colors').lastElementChild);
+}
+for (const [id, name, min, max] of SLIDERS) {
+  $('sliders').insertAdjacentHTML('beforeend',
+    `<div class="group"><div class="h"><b>${name}</b><span id="${id}-v"></span></div>
+     <input type="range" id="${id}" min="${min}" max="${max}" value="0"></div>`);
 }
 
 const val = id => Number($(id).value);
+function paintSlider(el) {
+  el.style.setProperty('--p', (el.value - el.min) / (el.max - el.min) * 100 + '%');
+  const v = Number(el.value);
+  $(el.id + '-v').textContent = el.id === 'margin' ? v + '%' : (v > 0 ? '+' + v : v);
+}
+function syncUI() {
+  document.querySelectorAll('input[type=range]').forEach(paintSlider);
+  document.querySelectorAll('#ratio button').forEach(b => b.classList.toggle('on', b.dataset.v === state.ratio));
+  document.querySelectorAll('#colors .sw').forEach(b => b.classList.toggle('on', (b.dataset.v || $('color').value) === state.color));
+  $('cv').textContent = state.color.toUpperCase();
+}
+
+document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x === b));
+  document.querySelectorAll('.pane').forEach(p => p.classList.toggle('on', p.id === b.dataset.tab));
+});
+$('ratio').onclick = e => { const b = e.target.closest('button'); if (b) { state.ratio = b.dataset.v; changed(); } };
+$('colors').onclick = e => { const b = e.target.closest('button'); if (b) { state.color = b.dataset.v; changed(); } };
+$('color').oninput = e => { state.color = e.target.value; changed(); };
+document.querySelectorAll('input[type=range]').forEach(el => {
+  el.oninput = changed;
+  // Double-tap the label to reset a slider.
+  el.previousElementSibling.ondblclick = () => { el.value = el.id === 'margin' ? 8 : 0; changed(); };
+});
+$('auto').onchange = changed;
+$('reset').onclick = () => {
+  SLIDERS.forEach(([id]) => $(id).value = 0);
+  $('auto').checked = false;
+  changed();
+};
+
+let queued = false;
+function changed() {
+  syncUI();
+  if (!queued) { queued = true; requestAnimationFrame(() => { queued = false; render(); }); }
+}
+
+// ---- Rendering ----
+// scale < 1 renders a cheap preview; saving always uses scale 1 (full 1080px width).
+function compose(item, scale) {
+  const [W0, H0] = state.ratio.split('x').map(Number);
+  const W = Math.round(W0 * scale), H = Math.round(H0 * scale);
+  const m = W * val('margin') / 100, img = item.img;
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const x = c.getContext('2d');
+  x.fillStyle = state.color;
+  x.fillRect(0, 0, W, H);
+  const s = Math.min((W - 2 * m) / img.width, (H - 2 * m) / img.height);
+  const w = img.width * s, h = img.height * s;
+  x.drawImage(enhance(item, Math.max(1, Math.round(w)), Math.max(1, Math.round(h))), (W - w) / 2, (H - h) / 2, w, h);
+  return c;
+}
+
+function render() {
+  document.body.classList.toggle('has-photos', items.length > 0);
+  if (!items.length) return;
+  current = Math.min(current, items.length - 1);
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const big = compose(items[current], Math.min(1, 380 * dpr / 1080));
+  const p = $('preview');
+  p.width = big.width; p.height = big.height;
+  p.getContext('2d').drawImage(big, 0, 0);
+  p.style.aspectRatio = big.width + '/' + big.height;
+
+  const strip = $('strip');
+  strip.innerHTML = '';
+  items.forEach((item, i) => {
+    const t = document.createElement('button');
+    t.className = 'thumb' + (i === current ? ' on' : '');
+    t.appendChild(compose(item, 0.12));
+    t.insertAdjacentHTML('beforeend', '<span class="x" aria-label="Quitar"><svg viewBox="0 0 10 10" stroke="#fff" stroke-width="1.6" stroke-linecap="round"><path d="M2 2l6 6M8 2l-6 6"/></svg></span>');
+    t.onclick = e => {
+      if (e.target.closest('.x')) items.splice(i, 1);
+      else current = i;
+      render();
+    };
+    strip.appendChild(t);
+  });
+  const add = document.createElement('label');
+  add.className = 'thumb add'; add.htmlFor = 'files'; add.setAttribute('aria-label', 'Añadir fotos');
+  add.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>';
+  strip.appendChild(add);
+  $('all').textContent = items.length > 1 ? `Guardar todas (${items.length})` : 'Guardar todas';
+  $('all').style.display = items.length > 1 ? '' : 'none';
+}
 
 // Black/white points at the 0.5% / 99.5% luminance percentiles.
 function levels(img) {
-  const c = new OffscreenCanvas(200, Math.max(1, Math.round(200 * img.height / img.width)));
+  const c = document.createElement('canvas');
+  c.width = 200; c.height = Math.max(1, Math.round(200 * img.height / img.width));
   const x = c.getContext('2d');
   x.drawImage(img, 0, 0, c.width, c.height);
   const d = x.getImageData(0, 0, c.width, c.height).data;
@@ -91,13 +349,13 @@ function levels(img) {
   return hi - lo > 10 ? [lo, hi] : [0, 255];
 }
 
-function enhance(img, w, h) {
+function enhance(item, w, h) {
   const c = document.createElement('canvas');
   c.width = w; c.height = h;
   const x = c.getContext('2d');
   x.imageSmoothingQuality = 'high';
-  x.drawImage(img, 0, 0, w, h);
-  const [lo, hi] = $('auto').checked ? (img.lv ||= levels(img)) : [0, 255];
+  x.drawImage(item.img, 0, 0, w, h);
+  const [lo, hi] = $('auto').checked ? (item.lv ||= levels(item.img)) : [0, 255];
   const br = val('bright') * 2.55, ct = (100 + val('contrast')) / 100;
   const st = 1 + val('sat') / 100, wm = val('warm') * 0.6, sh = val('sharp') / 100;
   if (lo === 0 && hi === 255 && !br && ct === 1 && st === 1 && !wm && !sh) return c;
@@ -126,39 +384,85 @@ function enhance(img, w, h) {
   return c;
 }
 
-function save(c, name) {
-  const app = window.webkit?.messageHandlers?.save;
-  if (app) {
-    return app.postMessage(c.toDataURL('image/jpeg', 0.95).split(',')[1])
-      .then(() => $('drop').textContent = 'Guardada en Fotos ✓', e => $('drop').textContent = 'Error: ' + e);
+// ---- Saving ----
+let toastTimer;
+function toast(msg, action) {
+  const t = $('toast');
+  t.innerHTML = '<span></span>';
+  t.firstChild.textContent = msg;
+  if (action) {
+    const b = document.createElement('button');
+    b.textContent = action[0]; b.onclick = action[1];
+    t.appendChild(b);
   }
-  c.toBlob(b => {
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), action ? 6000 : 2200);
+}
+
+const app = window.webkit?.messageHandlers?.save;
+const fileName = item => item.name.replace(/\.[^.]+$/, '') + '_marco.jpg';
+const toBlob = c => new Promise(r => c.toBlob(r, 'image/jpeg', 0.95));
+
+// Inside the iOS app: write straight to Photos. On the web: share sheet on phones, download elsewhere.
+async function saveItems(list) {
+  if (app) {
+    for (let i = 0; i < list.length; i++) {
+      if (list.length > 1) toast(`Guardando ${i + 1} de ${list.length}…`);
+      await app.postMessage(compose(list[i], 1).toDataURL('image/jpeg', 0.95).split(',')[1]);
+    }
+    return toast(list.length > 1 ? `${list.length} fotos guardadas en Fotos` : 'Guardada en Fotos');
+  }
+  const files = await Promise.all(list.map(async it => new File([await toBlob(compose(it, 1))], fileName(it), { type: 'image/jpeg' })));
+  if (matchMedia('(pointer: coarse)').matches && navigator.canShare?.({ files })) {
+    try { return await navigator.share({ files }); }
+    catch (e) { if (e.name === 'AbortError') return; }
+  }
+  files.forEach((f, i) => setTimeout(() => {
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(b);
-    a.download = name.replace(/\.[^.]+$/, '') + '_marco.jpg';
-    a.click();
+    a.href = URL.createObjectURL(f); a.download = f.name; a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  }, 'image/jpeg', 0.95);
+  }, i * 300));
+  toast(files.length > 1 ? `Descargando ${files.length} fotos` : 'Descargada');
 }
 
+async function save(list, btn) {
+  btn.disabled = true;
+  try { await saveItems(list); }
+  catch (e) {
+    const msg = e?.message || String(e);
+    if (msg === 'denied') {
+      toast('Marco Rojo no tiene permiso para Fotos', ['Ajustes', () => window.webkit.messageHandlers.openSettings.postMessage(null)]);
+    } else toast('No se pudo guardar: ' + msg);
+  } finally { btn.disabled = false; }
+}
+$('save').onclick = e => save([items[current]], e.currentTarget);
+$('all').onclick = e => save(items, e.currentTarget);
+
+// ---- Loading ----
 function load(fileList) {
-  const files = [...fileList].filter(f => f.type.startsWith('image/'));
-  Promise.all(files.map(f => createImageBitmap(f).then(img => ({ img, name: f.name }))))
-    .then(list => { images = images.concat(list); render(); });
+  const files = [...fileList].filter(f => f.type.startsWith('image/') || /\.(heic|heif)$/i.test(f.name));
+  if (!files.length) return;
+  Promise.allSettled(files.map(f => createImageBitmap(f).then(img => ({ img, name: f.name }))))
+    .then(res => {
+      const ok = res.filter(r => r.status === 'fulfilled').map(r => r.value);
+      if (ok.length < res.length) toast(`${res.length - ok.length} foto(s) no se pudieron abrir`);
+      if (!ok.length) return;
+      current = items.length;
+      items = items.concat(ok);
+      render();
+    });
 }
+$('files').onchange = e => { load(e.target.files); e.target.value = ''; };
 
-$('files').onchange = e => load(e.target.files);
-let queued = false;
-const schedule = () => queued || (queued = true, requestAnimationFrame(() => { queued = false; render(); }));
-['color', 'ratio', 'margin', 'auto', 'bright', 'contrast', 'sat', 'warm', 'sharp'].forEach(id => $(id).oninput = schedule);
-$('reset').onclick = () => {
-  ['bright', 'contrast', 'sat', 'warm', 'sharp'].forEach(id => $(id).value = 0);
-  $('auto').checked = false;
-  render();
-};
-$('all').onclick = () => $('out').querySelectorAll('canvas').forEach((c, i) => setTimeout(() => save(c, images[i].name), i * 300));
+let dragDepth = 0;
+document.ondragenter = e => { e.preventDefault(); dragDepth++; document.body.classList.add('dragging'); };
+document.ondragleave = () => { if (--dragDepth <= 0) { dragDepth = 0; document.body.classList.remove('dragging'); } };
 document.ondragover = e => e.preventDefault();
-document.ondrop = e => { e.preventDefault(); load(e.dataTransfer.files); };
+document.ondrop = e => { e.preventDefault(); dragDepth = 0; document.body.classList.remove('dragging'); load(e.dataTransfer.files); };
+
+syncUI();
+render();
 </script>
 </body>
 </html>
