@@ -1,6 +1,9 @@
 name: ipa
 on: [push, workflow_dispatch]
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: macos-15
@@ -14,8 +17,17 @@ jobs:
       - run: |
           mkdir Payload
           cp -R build/Build/Products/Release-iphoneos/MarcoRojo.app Payload/
-          zip -qr MarcoRojo.ipa Payload
+          zip -qry MarcoRojo.ipa Payload
+          unzip -l MarcoRojo.ipa | grep -q 'Payload/MarcoRojo.app/Info.plist'
       - uses: actions/upload-artifact@v4
         with:
           name: MarcoRojo-ipa
           path: MarcoRojo.ipa
+      # Actions artifacts always download as a .zip wrapping the .ipa, which AltStore
+      # rejects ("isn't in the correct format"). A release gives a direct .ipa link.
+      - if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest MarcoRojo.ipa --title "Marco Rojo" --notes "Build de ${GITHUB_SHA::7}" --target "$GITHUB_SHA"
