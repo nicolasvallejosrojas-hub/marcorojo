@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Marco Rojo</title>
+<link rel="apple-touch-icon" href="icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Marco Rojo">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="theme-color" content="#111111">
+<style>
+  :root { --bg:#111; --fg:#eee; --muted:#888; --accent:#650D0B; }
+  body { margin:0; padding:16px; background:var(--bg); color:var(--fg); font:16px system-ui, sans-serif; }
+  .bar { display:flex; flex-wrap:wrap; gap:12px 20px; align-items:center; margin-bottom:16px; }
+  label { display:flex; gap:6px; align-items:center; color:var(--muted); }
+  button { background:var(--accent); color:#fff; border:0; padding:8px 14px; border-radius:6px; cursor:pointer; font:inherit; }
+  #out { display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:12px; }
+  #out a { display:block; }
+  #out canvas { width:100%; height:auto; display:block; }
+  #drop { border:2px dashed #444; border-radius:8px; padding:24px; text-align:center; color:var(--muted); margin-bottom:16px; }
+</style>
+</head>
+<body>
+<div class="bar">
+  <input type="file" id="files" accept="image/*" multiple>
+  <label>Color <input type="color" id="color" value="#650d0b"></label>
+  <label>Formato
+    <select id="ratio">
+      <option value="1080x1350">4:5 (1080×1350)</option>
+      <option value="1080x1440">3:4 (1080×1440)</option>
+      <option value="1080x1080">1:1 (1080×1080)</option>
+    </select>
+  </label>
+  <label>Margen <input type="range" id="margin" min="0" max="25" value="8"> <span id="mv">8%</span></label>
+  <button id="all">Descargar todas</button>
+</div>
+<div class="bar">
+  <label><input type="checkbox" id="auto"> Auto contraste</label>
+  <label>Brillo <input type="range" id="bright" min="-50" max="50" value="0"></label>
+  <label>Contraste <input type="range" id="contrast" min="-50" max="50" value="0"></label>
+  <label>Saturación <input type="range" id="sat" min="-100" max="100" value="0"></label>
+  <label>Calidez <input type="range" id="warm" min="-50" max="50" value="0"></label>
+  <label>Nitidez <input type="range" id="sharp" min="0" max="100" value="0"></label>
+  <button id="reset">Restablecer</button>
+</div>
+<div id="drop">Arrastra fotos aquí o usa el selector. Clic en una imagen para descargarla.</div>
+<div id="out"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+let images = [];
+
+function render() {
+  $('mv').textContent = $('margin').value + '%';
+  const [W, H] = $('ratio').value.split('x').map(Number);
+  const m = W * $('margin').value / 100;
+  $('out').innerHTML = '';
+  images.forEach(({ img, name }) => {
+    const c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    const x = c.getContext('2d');
+    x.fillStyle = $('color').value;
+    x.fillRect(0, 0, W, H);
+    const s = Math.min((W - 2 * m) / img.width, (H - 2 * m) / img.height);
+    const w = img.width * s, h = img.height * s;
+    x.drawImage(enhance(img, Math.round(w), Math.round(h)), (W - w) / 2, (H - h) / 2, w, h);
+    const a = document.createElement('a');
+    a.href = '#';
+    a.onclick = e => { e.preventDefault(); save(c, name); };
+    a.appendChild(c);
+    $('out').appendChild(a);
+  });
+}
+
+const val = id => Number($(id).value);
+
+// Black/white points at the 0.5% / 99.5% luminance percentiles.
+function levels(img) {
+  const c = new OffscreenCanvas(200, Math.max(1, Math.round(200 * img.height / img.width)));
+  const x = c.getContext('2d');
+  x.drawImage(img, 0, 0, c.width, c.height);
+  const d = x.getImageData(0, 0, c.width, c.height).data;
+  const hist = new Array(256).fill(0);
+  for (let i = 0; i < d.length; i += 4) hist[Math.round(.299 * d[i] + .587 * d[i + 1] + .114 * d[i + 2])]++;
+  const n = d.length / 4, cut = n * 0.005;
+  let lo = 0, hi = 255, acc = 0;
+  while (lo < 255 && (acc += hist[lo]) < cut) lo++;
+  acc = 0;
+  while (hi > 0 && (acc += hist[hi]) < cut) hi--;
+  return hi - lo > 10 ? [lo, hi] : [0, 255];
+}
+
+function enhance(img, w, h) {
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const x = c.getContext('2d');
+  x.imageSmoothingQuality = 'high';
+  x.drawImage(img, 0, 0, w, h);
+  const [lo, hi] = $('auto').checked ? (img.lv ||= levels(img)) : [0, 255];
+  const br = val('bright') * 2.55, ct = (100 + val('contrast')) / 100;
+  const st = 1 + val('sat') / 100, wm = val('warm') * 0.6, sh = val('sharp') / 100;
+  if (lo === 0 && hi === 255 && !br && ct === 1 && st === 1 && !wm && !sh) return c;
+
+  const id = x.getImageData(0, 0, w, h), d = id.data, k = 255 / (hi - lo);
+  for (let i = 0; i < d.length; i += 4) {
+    let r = (d[i] - lo) * k, g = (d[i + 1] - lo) * k, b = (d[i + 2] - lo) * k;
+    r = (r - 128) * ct + 128 + br + wm;
+    g = (g - 128) * ct + 128 + br;
+    b = (b - 128) * ct + 128 + br - wm;
+    const y = .299 * r + .587 * g + .114 * b;
+    d[i] = y + (r - y) * st; d[i + 1] = y + (g - y) * st; d[i + 2] = y + (b - y) * st;
+  }
+  if (sh) {
+    // 3x3 sharpen: center 1+4a, cross neighbours -a. Edges left as-is.
+    const s = new Uint8ClampedArray(d), row = w * 4;
+    for (let yy = 1; yy < h - 1; yy++) for (let xx = 1; xx < w - 1; xx++) {
+      const i = yy * row + xx * 4;
+      for (let ch = 0; ch < 3; ch++) {
+        const p = i + ch;
+        d[p] = s[p] * (1 + 4 * sh) - sh * (s[p - 4] + s[p + 4] + s[p - row] + s[p + row]);
+      }
+    }
+  }
+  x.putImageData(id, 0, 0);
+  return c;
+}
+
+function save(c, name) {
+  const app = window.webkit?.messageHandlers?.save;
+  if (app) {
+    return app.postMessage(c.toDataURL('image/jpeg', 0.95).split(',')[1])
+      .then(() => $('drop').textContent = 'Guardada en Fotos ✓', e => $('drop').textContent = 'Error: ' + e);
+  }
+  c.toBlob(b => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(b);
+    a.download = name.replace(/\.[^.]+$/, '') + '_marco.jpg';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }, 'image/jpeg', 0.95);
+}
+
+function load(fileList) {
+  const files = [...fileList].filter(f => f.type.startsWith('image/'));
+  Promise.all(files.map(f => createImageBitmap(f).then(img => ({ img, name: f.name }))))
+    .then(list => { images = images.concat(list); render(); });
+}
+
+$('files').onchange = e => load(e.target.files);
+let queued = false;
+const schedule = () => queued || (queued = true, requestAnimationFrame(() => { queued = false; render(); }));
+['color', 'ratio', 'margin', 'auto', 'bright', 'contrast', 'sat', 'warm', 'sharp'].forEach(id => $(id).oninput = schedule);
+$('reset').onclick = () => {
+  ['bright', 'contrast', 'sat', 'warm', 'sharp'].forEach(id => $(id).value = 0);
+  $('auto').checked = false;
+  render();
+};
+$('all').onclick = () => $('out').querySelectorAll('canvas').forEach((c, i) => setTimeout(() => save(c, images[i].name), i * 300));
+document.ondragover = e => e.preventDefault();
+document.ondrop = e => { e.preventDefault(); load(e.dataTransfer.files); };
+</script>
+</body>
+</html>

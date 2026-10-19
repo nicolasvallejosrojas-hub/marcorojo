@@ -1,0 +1,21 @@
+name: ipa
+on: [push, workflow_dispatch]
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install xcodegen && xcodegen generate
+      - run: >
+          xcodebuild -project MarcoRojo.xcodeproj -scheme MarcoRojo -configuration Release
+          -sdk iphoneos -derivedDataPath build CODE_SIGNING_ALLOWED=NO
+      # Unsigned .ipa; Sideloadly/AltStore signs it with your Apple ID when installing.
+      - run: |
+          mkdir Payload
+          cp -R build/Build/Products/Release-iphoneos/MarcoRojo.app Payload/
+          zip -qr MarcoRojo.ipa Payload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MarcoRojo-ipa
+          path: MarcoRojo.ipa

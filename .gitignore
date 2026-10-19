@@ -1,0 +1,5 @@
+*.xcodeproj
+MarcoRojo/Info.plist
+build/
+Payload/
+*.ipa
